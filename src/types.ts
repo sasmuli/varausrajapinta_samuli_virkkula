@@ -1,4 +1,4 @@
-export type RoomId = 'A' | 'B' | 'C' | 'D' | 'E';
+export type RoomId = 'A' | 'B' | 'C';
 
 export interface Booking {
   id: string;

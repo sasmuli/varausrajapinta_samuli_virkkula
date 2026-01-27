@@ -53,7 +53,7 @@ npm run test:watch
 Luo uuden varauksen tietylle huoneelle.
 
 **Parametrit:**
-- `roomId` (string): Huoneen tunnus (A, B, C, D tai E)
+- `roomId` (string): Huoneen tunnus (A, B tai C)
 
 **Request body:**
 ```json
@@ -95,7 +95,7 @@ curl -X POST http://localhost:3000/rooms/A/bookings \
 Hakee kaikki tietyn huoneen varaukset.
 
 **Parametrit:**
-- `roomId` (string): Huoneen tunnus (A, B, C, D tai E)
+- `roomId` (string): Huoneen tunnus (A, B tai C)
 
 **Onnistunut vastaus (200 OK):**
 ```json
@@ -173,7 +173,7 @@ Kaikki virheet palauttavat yhtenäisen muodon:
 
 ## Huoneet
 
-Käytössä on kiinteä huonelista: **A**, **B**, **C**, **D**, **E**
+Käytössä on kiinteä huonelista: **A**, **B**, **C**
 
 Mikä tahansa muu huonetunnus palauttaa `404 Not Found`.
 

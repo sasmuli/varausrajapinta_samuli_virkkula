@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const VALID_ROOMS = ['A', 'B', 'C', 'D', 'E'] as const;
+export const VALID_ROOMS = ['A', 'B', 'C'] as const;
 
 export const createBookingSchema = z.object({
   start: z.string().datetime(),

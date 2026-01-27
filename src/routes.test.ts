@@ -55,6 +55,48 @@ describe('API Routes', () => {
       await app.close();
     });
 
+    it('should return 404 for room D', async () => {
+      const app = await buildServer();
+      const start = new Date(Date.now() + 1000 * 60 * 60);
+      const end = new Date(start.getTime() + 1000 * 60 * 60);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/rooms/D/bookings',
+        payload: {
+          start: start.toISOString(),
+          end: end.toISOString(),
+        },
+      });
+
+      expect(response.statusCode).toBe(404);
+      const body = JSON.parse(response.body);
+      expect(body.message).toBe('Room not found');
+
+      await app.close();
+    });
+
+    it('should return 404 for room E', async () => {
+      const app = await buildServer();
+      const start = new Date(Date.now() + 1000 * 60 * 60);
+      const end = new Date(start.getTime() + 1000 * 60 * 60);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/rooms/E/bookings',
+        payload: {
+          start: start.toISOString(),
+          end: end.toISOString(),
+        },
+      });
+
+      expect(response.statusCode).toBe(404);
+      const body = JSON.parse(response.body);
+      expect(body.message).toBe('Room not found');
+
+      await app.close();
+    });
+
     it('should return 400 for invalid request body', async () => {
       const app = await buildServer();
 
@@ -211,6 +253,36 @@ describe('API Routes', () => {
       const response = await app.inject({
         method: 'GET',
         url: '/rooms/Z/bookings',
+      });
+
+      expect(response.statusCode).toBe(404);
+      const body = JSON.parse(response.body);
+      expect(body.message).toBe('Room not found');
+
+      await app.close();
+    });
+
+    it('should return 404 for room D', async () => {
+      const app = await buildServer();
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/rooms/D/bookings',
+      });
+
+      expect(response.statusCode).toBe(404);
+      const body = JSON.parse(response.body);
+      expect(body.message).toBe('Room not found');
+
+      await app.close();
+    });
+
+    it('should return 404 for room E', async () => {
+      const app = await buildServer();
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/rooms/E/bookings',
       });
 
       expect(response.statusCode).toBe(404);
