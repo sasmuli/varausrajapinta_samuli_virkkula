@@ -115,7 +115,16 @@ npm run build  # Build for production
 The API is ready to run with all requirements met, comprehensive test coverage, and detailed documentation in `@d:/StudioProjects/samuli_virkkula_kokoushuone_api/README.md:1-199`.
 
 
-## 2 Business-logiikan selitys
+
+
+
+
+
+
+
+
+
+## 2. Business-logiikan selitys
 
 ### Prompt
 
@@ -370,7 +379,14 @@ Nykyinen toteutus toimii erinomaisesti pienissä järjestelmissä (< 100 varaust
 
 
 
-## 3 Reittien ja HTTP-kerroksen selitys
+
+
+
+
+
+
+
+## 3. Reittien ja HTTP-kerroksen selitys
 
 ### Prompt
 
@@ -885,6 +901,12 @@ Toteutus skaalautuu huonosti:
 - Lisäämällä oikeustarkistukset → pitää muokata jokainen handler erikseen
 
 **Suositus:** Demonstraatio- ja opetuskäyttöön erinomainen. Tuotantoon menossa refaktoroi ensin epäjohdonmukaisuudet ja keskitä error handling.
+
+
+
+
+
+
 
 
 
@@ -1426,6 +1448,16 @@ Joko: Anna [BookingError](cci:2://file:///d:/StudioProjects/samuli_virkkula_koko
 Tai: Luo keskitetty mapping `const STATUS_NAMES = { 400: 'Bad Request', 409: 'Conflict', ... }`
 
 Nykyinen toteutus on **hyvä ensimmäinen versio**, mutta skaalautuu huonosti ja vaatii refaktorointia ennen tuotantokäyttöä.
+
+
+
+
+
+
+
+
+
+
 
 ## 5 Testien selitys
 
@@ -2175,3 +2207,248 @@ it('should return all bookings for a room', async () => {
 3. Lisää performance-testit suurilla datamäärillä
 
 Nykyinen toteutus on **hyvä lähtökohta** ja kattaa **kaikki normaalit käyttötapaukset**. Reunatapausten ja edge caset vaativat lisää huomiota tuotantokäyttöön.
+
+
+
+
+
+
+
+
+
+
+
+## VAIHE 2 ##
+
+## 1. roomId-validointi toistuu routes.ts:ssä
+
+### Prompt 
+
+Mikä on paras tapa poistaa toistuva roomId-validointi src/routes.test.ts:ssä?
+
+### Vastaus
+
+Analysoin [routes.ts](cci:7://file:///d:/StudioProjects/samuli_virkkula_kokoushuone_api/src/routes.ts:0:0-0:0):n roomId-validoinnin toiston ja ehdotan parhaan ratkaisun.
+
+# Paras tapa poistaa roomId-validoinnin toisto
+
+Analysoin `@d:/StudioProjects/samuli_virkkula_kokoushuone_api/src/routes.ts:18-25` ja `@d:/StudioProjects/samuli_virkkula_kokoushuone_api/src/routes.ts:58-65` - roomId-validointi toistetaan identtisenä kahdessa endpointissa.
+
+## Suositus: Fastify preHandler Hook
+
+**Paras ratkaisu** on käyttää **Fastify:n `preHandler` hookia**, joka validoi roomId:n automaattisesti ennen route handleria.
+
+### Toteutus:
+
+```typescript
+// Luo preHandler hook roomId-validointiin
+const validateRoomId = async (request: FastifyRequest<{ Params: { roomId: string } }>, reply: FastifyReply) => {
+  const roomIdResult = roomIdSchema.safeParse(request.params.roomId);
+  if (!roomIdResult.success) {
+    return reply.status(404).send({
+      statusCode: 404,
+      error: 'Not Found',
+      message: 'Room not found',
+    } as ErrorResponse);
+  }
+  // Tallenna validoitu arvo requestiin (valinnainen)
+  request.params.roomId = roomIdResult.data;
+};
+
+// Käytä hookia endpointeissa
+app.post('/rooms/:roomId/bookings', 
+  { preHandler: validateRoomId }, // <- Hook tähän
+  async (request, reply) => {
+    // roomId on jo validoitu, voit käyttää suoraan
+    const bodyResult = createBookingSchema.safeParse(request.body);
+    // ... loput logiikasta
+  }
+);
+
+app.get('/rooms/:roomId/bookings',
+  { preHandler: validateRoomId }, // <- Sama hook tähän
+  async (request, reply) => {
+    const bookings = bookingStore.getBookingsByRoom(request.params.roomId as RoomId);
+    return reply.status(200).send(bookings);
+  }
+);
+```
+
+### Edut:
+- ✅ **DRY** - Validointilogiikka yhdessä paikassa
+- ✅ **Automaattinen** - Hook suoritetaan ennen handleria
+- ✅ **Deklaratiivinen** - Selkeä että endpoint vaatii validia roomId:tä
+- ✅ **Testattavissa** - Hook on erillinen funktio
+- ✅ **Fastify-idiomi** - Natiivi tapa tehdä tämä
+
+---
+
+## Vaihtoehto 2: Error Factory -funktiot
+
+Jos haluat pitää validoinnin handlereissa, luo **factory-funktiot** virhevastauksia varten:
+
+```typescript
+// Error factory -funktiot
+const createErrorResponse = (statusCode: number, error: string, message: string): ErrorResponse => ({
+  statusCode,
+  error,
+  message,
+});
+
+const notFoundError = (message: string) => createErrorResponse(404, 'Not Found', message);
+const badRequestError = (message: string) => createErrorResponse(400, 'Bad Request', message);
+
+// Käyttö endpointeissa
+const roomIdResult = roomIdSchema.safeParse(request.params.roomId);
+if (!roomIdResult.success) {
+  return reply.status(404).send(notFoundError('Room not found'));
+}
+```
+
+**Edut:** Vähemmän toistoa virhevastauksissa  
+**Haitat:** Validointilogiikka silti toistetaan
+
+---
+
+## Vaihtoehto 3: Fastify Schema Validation (Type Provider)
+
+Käytä Fastify:n natiiveja **JSON Schema** -määrittelyjä:
+
+```typescript
+import { Type } from '@sinclair/typebox';
+
+const roomIdParam = Type.Object({
+  roomId: Type.Union([
+    Type.Literal('A'),
+    Type.Literal('B'),
+    Type.Literal('C'),
+    Type.Literal('D'),
+    Type.Literal('E'),
+  ]),
+});
+
+app.post('/rooms/:roomId/bookings', {
+  schema: {
+    params: roomIdParam, // <- Automaattinen validointi
+  }
+}, async (request, reply) => {
+  // roomId on jo validoitu, tyypitetty automaattisesti
+  const booking = createBooking(
+    request.params.roomId, // Tyyppiturvallinen!
+    // ...
+  );
+});
+```
+
+**Edut:** Automaattinen, tyyppiturvallinen, OpenAPI-dokumentaatio  
+**Haitat:** Vaatii TypeBox/JSON Schema -riippuvuuden, eri virhemuoto kuin Zod
+
+---
+
+## Vaihtoehto 4: Middleware-funktio
+
+Klassinen middleware-lähestymistapa:
+
+```typescript
+const validateRoomIdMiddleware = (
+  request: FastifyRequest<{ Params: { roomId: string } }>,
+  reply: FastifyReply,
+  done: (err?: Error) => void
+) => {
+  const roomIdResult = roomIdSchema.safeParse(request.params.roomId);
+  if (!roomIdResult.success) {
+    reply.status(404).send({
+      statusCode: 404,
+      error: 'Not Found',
+      message: 'Room not found',
+    });
+    return; // Älä kutsu done()
+  }
+  done(); // Jatka seuraavaan
+};
+
+// Käyttö
+app.post('/rooms/:roomId/bookings', validateRoomIdMiddleware, async (request, reply) => {
+  // ...
+});
+```
+
+**Edut:** Yksinkertainen  
+**Haitat:** Vanhentunut tyyli, preHandler on modernimpi
+
+---
+
+## Lopullinen suositus
+
+**Käytä Fastify preHandler hookia** (Vaihtoehto 1), koska:
+
+1. **Natiivi Fastify-ratkaisu** - Ei lisäriippuvuuksia
+2. **Yhdistyy hyvin Zod:n kanssa** - Voit käyttää olemassa olevia skeemoja
+3. **Selkeä ja testattava** - Hook on erillinen funktio
+4. **Skaalautuva** - Sama lähestymistapa toimii bookingId:lle ja body-validoinnille
+
+### Täydellinen refaktoroitu esimerkki:
+
+```typescript
+import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import { RoomId } from './types.js';
+
+// Hookien määrittelyt
+const validateRoomId = async (
+  request: FastifyRequest<{ Params: { roomId: string } }>, 
+  reply: FastifyReply
+) => {
+  const result = roomIdSchema.safeParse(request.params.roomId);
+  if (!result.success) {
+    return reply.status(404).send({
+      statusCode: 404,
+      error: 'Not Found',
+      message: 'Room not found',
+    } as ErrorResponse);
+  }
+};
+
+const validateBookingId = async (
+  request: FastifyRequest<{ Params: { bookingId: string } }>,
+  reply: FastifyReply
+) => {
+  const result = bookingIdSchema.safeParse(request.params.bookingId);
+  if (!result.success) {
+    return reply.status(404).send({
+      statusCode: 404,
+      error: 'Not Found',
+      message: 'Booking not found',
+    } as ErrorResponse);
+  }
+};
+
+// Routes
+export async function registerRoutes(app: FastifyInstance) {
+  app.post('/rooms/:roomId/bookings', 
+    { preHandler: validateRoomId },
+    async (request, reply) => {
+      // roomId-validointi on jo tehty
+      const bodyResult = createBookingSchema.safeParse(request.body);
+      // ... loput logiikasta
+    }
+  );
+
+  app.get('/rooms/:roomId/bookings',
+    { preHandler: validateRoomId },
+    async (request, reply) => {
+      const bookings = bookingStore.getBookingsByRoom(request.params.roomId as RoomId);
+      return reply.status(200).send(bookings);
+    }
+  );
+
+  app.delete('/bookings/:bookingId',
+    { preHandler: validateBookingId },
+    async (request, reply) => {
+      const booking = bookingStore.getBookingById(request.params.bookingId);
+      // ... loput logiikasta
+    }
+  );
+}
+```
+
+Tämä poistaa **~15 riviä toistoa** ja tekee koodista ylläpidettävämmän.
