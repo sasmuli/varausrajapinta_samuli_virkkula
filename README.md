@@ -44,6 +44,11 @@ npm test
 npm run test:watch
 ```
 
+**Testikattavuus:** 36 testiä (13 yksikkötestiä, 23 integraatiotestiä)
+
+- **Business logic -testit** (`business-logic.test.ts`): Testaavat liiketoimintalogiikkaa (aika-validointi, päällekkäisyydet)
+- **API-integraatiotestit** (`routes.test.ts`): Testaavat koko HTTP-flow:ta (reititys, validointi, virhekäsittely)
+
 ## API-dokumentaatio
 
 ### 1. Luo varaus
@@ -85,6 +90,7 @@ curl -X POST http://localhost:3000/rooms/A/bookings \
 
 **Virhetilanteet:**
 - `400 Bad Request` - Virheellinen aikamuoto, varaus menneisyydessä tai aloitusaika >= lopetusaika
+  - Zod-validointivirheet sisältävät `details`-kentän, joka listaa virheelliset kentät
 - `404 Not Found` - Tuntematon huone
 - `409 Conflict` - Varaus menee päällekkäin olemassa olevan varauksen kanssa
 
@@ -152,7 +158,9 @@ curl -X DELETE http://localhost:3000/bookings/550e8400-e29b-41d4-a716-4466554400
 
 ## Virhevastauksien muoto
 
-Kaikki virheet palauttavat yhtenäisen muodon:
+Kaikki virheet noudattavat yhtenäistä `ErrorResponse`-rakennetta:
+
+### Perusmuoto
 
 ```json
 {
@@ -162,6 +170,40 @@ Kaikki virheet palauttavat yhtenäisen muodon:
 }
 ```
 
+### Zod-validointivirheet (sisältää details-kentän)
+
+Kun request body -validointi epäonnistuu, vastaus sisältää `details`-kentän, joka listaa kaikki virheelliset kentät:
+
+```json
+{
+  "statusCode": 400,
+  "error": "Bad Request",
+  "message": "Invalid request body",
+  "details": [
+    {
+      "field": "start",
+      "message": "Invalid datetime"
+    }
+  ]
+}
+```
+
+Tämä auttaa frontend-kehittäjiä näyttämään kentäkohtaisia virheviestejä lomakkeissa.
+
+### Odottamattomat virheet (500)
+
+Kaikki odottamattomat virheet käsitellään globaalilla error handlerilla:
+
+```json
+{
+  "statusCode": 500,
+  "error": "Internal Server Error",
+  "message": "An unexpected error occurred"
+}
+```
+
+Virheet logitetaan palvelimen puolella, mutta stack trace ei vuoda asiakkaalle.
+
 ## HTTP-statuskoodit
 
 - `200 OK` - Onnistunut GET-pyyntö
@@ -170,6 +212,7 @@ Kaikki virheet palauttavat yhtenäisen muodon:
 - `400 Bad Request` - Virheellinen pyyntö (esim. menneisyys, virheellinen aikamuoto)
 - `404 Not Found` - Resurssia ei löydy (tuntematon huone tai varaus)
 - `409 Conflict` - Päällekkäinen varaus
+- `500 Internal Server Error` - Odottamaton palvelinvirhe
 
 ## Huoneet
 
@@ -188,12 +231,58 @@ Mikä tahansa muu huonetunnus palauttaa `404 Not Found`.
 ```
 src/
 ├── index.ts              # Sovelluksen käynnistyspiste
-├── server.ts             # Fastify-palvelimen rakentaminen
-├── routes.ts             # API-reitit ja käsittelijät
-├── types.ts              # TypeScript-tyyppimäärittelyt
+├── server.ts             # Fastify-palvelimen rakentaminen + globaali error handler
+├── routes.ts             # API-reitit, preHandler-hookit ja käsittelijät
+├── types.ts              # TypeScript-tyyppimäärittelyt (Booking, ErrorResponse)
 ├── validation.ts         # Zod-validointischeemat
-├── store.ts              # In-memory data store
+├── store.ts              # In-memory data store (Map-pohjainen)
 ├── business-logic.ts     # Liiketoimintalogiikka ja validoinnit
-├── business-logic.test.ts # Business logic -testit
-└── routes.test.ts        # API-reittien integraatiotestit
+├── business-logic.test.ts # Yksikkötestit (13 testiä)
+└── routes.test.ts        # Integraatiotestit (23 testiä)
 ```
+
+## Arkkitehtuuri
+
+Projekti noudattaa **kerrosarkkitehtuuria** (layered architecture):
+
+1. **Presentation Layer** (`routes.ts`, `server.ts`)
+   - HTTP-pyyntöjen käsittely
+   - Zod-validointi (request body, URL-parametrit)
+   - Virheenkäsittely ja HTTP-statuskoodi -mappaus
+   - Fastify preHandler -hookit (DRY-periaate)
+
+2. **Domain Layer** (`business-logic.ts`)
+   - Liiketoimintasäännöt (overlap-tarkistus, aika-validointi)
+   - Domain-virheet (`BookingError`)
+   - HTTP-riippumaton logiikka
+
+3. **Data Layer** (`store.ts`)
+   - CRUD-operaatiot
+   - In-memory Map-pohjainen tallennusratkaisu
+   - Ei liiketoimintalogiikkaa
+
+## Ominaisuudet
+
+### Virheenkäsittely
+-  Yhtenäinen `ErrorResponse`-muoto kaikille virheille
+-  Zod-validointivirheet sisältävät `details`-kentän (kehittäjäystävällinen)
+-  Globaali error handler (500 Internal Server Error)
+-  Virheet logitetaan, mutta stack tracet eivät vuoda
+
+### Validointi
+-  Zod-scheemat runtime-validointiin
+-  TypeScript type-safety
+-  Fastify preHandler -hookit (roomId, bookingId)
+-  ISO-8601 datetime-validointi
+
+### Testaus
+-  36 testiä (100% kriittisten polkujen kattavuus)
+-  Yksikkötestit domain-logiikalle
+-  Integraatiotestit API-reiteille
+-  Edge case -testit (adjacent bookings, overlap-skenaariot)
+
+## Tunnetut rajoitukset
+
+- **Race conditions**: In-memory store ei käsittele samanaikaisia pyyntöjä lukituksilla. Single-threaded Node.js-ympäristössä tämä ei ole ongelma, mutta jos siirtyisit tietokantaan ja useaan instanssiin, tarvittaisiin transaktioita tai lukituksia.
+- **Datan pysyvyys**: Kaikki data katoaa palvelimen uudelleenkäynnistyksessä (in-memory store).
+- **Skaalautuvuus**: Single-instance deployment. Horizontal scaling vaatisi jaetun tilan (Redis, PostgreSQL, jne.).

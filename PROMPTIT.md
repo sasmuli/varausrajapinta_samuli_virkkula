@@ -6,6 +6,28 @@ Tekoälyä on hyödynnetty parikoodaajana tehtävänannon mukaisesti.
 
 ---
 
+## Sisällysluettelo
+
+Ohje: *CTRL + klikkaus linkin päällä siirtää suoraan oikeaan kohtaan dokumentissa.*
+
+### Vaihe 1 - Projektin perustus ja analyysit
+
+1. [Master prompt – projektin generointi](#1-master-prompt--projektin-generointi)
+2. [Business-logiikan selitys](#2-business-logiikan-selitys)
+3. [Reittien ja HTTP-kerroksen selitys](#3-reittien-ja-http-kerroksen-selitys)
+4. [Validoinnin ja virheenkäsittelyn selitys](#4-validoinnin-ja-virheenkäsittelyn-selitys)
+5. [Testien analyysi](#5-testien-analyysi)
+
+### Vaihe 2 - Refaktoroinnit ja parannukset
+
+1. [roomId-validointi toistuu routes.ts:ssä](#1-roomid-validointi-toistuu-routestssä)
+2. [routes.ts tarkistus](#2-routests-tarkistus)
+3. [Globaali errorhandeler](#3-globaali-errorhandeler)
+4. [Zod validoinnin arviointi](#4-zod-validoinnin-arviointi)
+5. [ErrorResponse testin lisäys](#5-errorresponse-tesin-lisäys)
+
+---
+
 ## 1. Master prompt – projektin generointi
 
 ### Prompt
