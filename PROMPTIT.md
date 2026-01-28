@@ -2709,3 +2709,457 @@ Globaali error handler on nyt käytössä ja toimii turvana odottamattomille vir
 
 
 
+## 4. Zod validoinnin arviointi 
+
+### Prompt 
+
+Onko Zod-validoinnissa issues-listan palauttaminen asiakkaalle hyvä käytäntö vai ei. Perustele vastaus ja kerro milloin se on hyvä idea ja milloin se kannattaa jättää pois tässä projektissa. Älä tee muutoksia koodiin.
+
+Käy läpi tiedostot: @validation.ts @routes.ts 
+
+### Vastaus 
+
+Analysoin Zod-validoinnin ja sen yksityiskohtien palauttamista asiakkaalle.
+
+# Zod-validoinnin issues-listan palauttaminen asiakkaalle - Analyysi
+
+## Nykyinen toteutus
+
+### **[routes.ts](cci:7://file:///d:/StudioProjects/samuli_virkkula_kokoushuone_api/src/routes.ts:0:0-0:0) - Geneerinen virheviesti** `@d:/StudioProjects/samuli_virkkula_kokoushuone_api/src/routes.ts:54-60`
+
+```typescript
+const bodyResult = createBookingSchema.safeParse(request.body);
+if (!bodyResult.success) {
+  return reply.status(400).send({
+    statusCode: 400,
+    error: 'Bad Request',
+    message: 'Invalid request body', // ❌ Ei kerro MIKÄ on väärin
+  });
+}
+```
+
+**Mitä asiakkaalle kerrotaan:** "Invalid request body"  
+**Mitä Zod tietää:** `bodyResult.error.issues` sisältää tarkat virheet
+
+---
+
+## Mitä Zod issues sisältää?
+
+**Esimerkki virheellisestä pyynnöstä:**
+```json
+POST /rooms/A/bookings
+{
+  "start": "not-a-date",
+  "end": "2026-01-28T10:00:00Z"
+}
+```
+
+**Zod `bodyResult.error.issues`:**
+```json
+[
+  {
+    "code": "invalid_string",
+    "validation": "datetime",
+    "path": ["start"],
+    "message": "Invalid datetime"
+  }
+]
+```
+
+**Jos palauttaisit issues:**
+```json
+{
+  "statusCode": 400,
+  "error": "Bad Request",
+  "message": "Invalid request body",
+  "details": [
+    {
+      "field": "start",
+      "message": "Invalid datetime"
+    }
+  ]
+}
+```
+
+---
+
+## Edut: Milloin issues-lista ON hyvä idea? ✅
+
+### **1. Kehittäjäystävällinen API**
+**Käyttötapaus:** Frontend-kehittäjät integroivat API:si
+
+**Ilman issues:**
+```
+❌ "Invalid request body"
+→ Kehittäjä: "Mikä kenttä? Mikä on väärin? Onko start vai end?"
+→ Täytyy kokeilla ja arvata
+```
+
+**Issues kanssa:**
+```
+✅ "Field 'start': Invalid datetime format"
+→ Kehittäjä: "Selvä, start-kentän muoto on väärä"
+→ Korjaa välittömästi
+```
+
+**Hyöty:** Nopeampi debuggaus, vähemmän tukipyyntöjä
+
+---
+
+### **2. Monimutkainen validointi**
+**Tässä projektissa:**
+```typescript
+export const createBookingSchema = z.object({
+  start: z.string().datetime(),
+  end: z.string().datetime(),
+});
+```
+
+**Jos lisätään useita kenttiä:**
+```typescript
+export const createBookingSchema = z.object({
+  start: z.string().datetime(),
+  end: z.string().datetime(),
+  attendees: z.array(z.string().email()).min(1).max(10),
+  roomSetup: z.enum(['theater', 'classroom', 'boardroom']),
+  equipment: z.array(z.enum(['projector', 'whiteboard', 'videoconf'])).optional(),
+  catering: z.boolean().optional(),
+  notes: z.string().max(500).optional(),
+});
+```
+
+**Ilman issues:**
+```
+❌ "Invalid request body"
+→ Mikä kenttä? Yksi vai useampi virhe?
+```
+
+**Issues kanssa:**
+```
+✅ [
+  { "field": "attendees[2]", "message": "Invalid email" },
+  { "field": "roomSetup", "message": "Invalid enum value. Expected 'theater' | 'classroom' | 'boardroom'" },
+  { "field": "notes", "message": "String must contain at most 500 character(s)" }
+]
+→ Kaikki virheet kerralla näkyvissä
+```
+
+**Hyöty:** Käyttäjä voi korjata kaikki virheet yhdellä kertaa
+
+---
+
+### **3. Frontend-lomakkeiden validointi**
+**Käyttötapaus:** React/Vue-lomake jossa inline-virheilmoitukset
+
+```typescript
+// Frontend koodi
+const response = await fetch('/rooms/A/bookings', { ... });
+const error = await response.json();
+
+if (error.details) {
+  error.details.forEach(issue => {
+    setFieldError(issue.field, issue.message); // Näytä virhe kentän alla
+  });
+}
+```
+
+**Ilman issues:** Koko lomake vain "Invalid request body" - ei tiedetä mitä kenttiä korostaa  
+**Issues kanssa:** Jokaisen virheen kohdalla punainen reuna ja viesti
+
+**Hyöty:** Parempi UX
+
+---
+
+### **4. API dokumentaatio ja kehitys**
+**Käyttötapaus:** OpenAPI/Swagger-dokumentaatio
+
+Issues-lista auttaa dokumentoimaan:
+- Mitä validointeja kentillä on
+- Mitä virheviestejä voi tulla
+- Miten käsitellä virheitä
+
+---
+
+### **5. Kansainvälistäminen (i18n)**
+**Käyttötapaus:** Monikielinen API
+
+```typescript
+// Backend palauttaa error code
+{ "field": "start", "code": "invalid_datetime" }
+
+// Frontend kääntää
+const messages = {
+  fi: { invalid_datetime: "Virheellinen päivämäärä" },
+  en: { invalid_datetime: "Invalid datetime" },
+  sv: { invalid_datetime: "Ogiltigt datumformat" }
+};
+```
+
+**Hyöty:** Frontend voi näyttää virheet käyttäjän kielellä
+
+---
+
+## Haitat: Milloin issues-lista EI ole hyvä idea? ❌
+
+### **1. Tietoturva: Information disclosure**
+
+**Riski:** Zod-virheet voivat paljastaa sisäistä arkkitehtuuria
+
+**Esimerkki 1 - Paljastaa skeemarakenteen:**
+```json
+{
+  "path": ["user", "creditCard", "number"],
+  "message": "Expected string, received number"
+}
+```
+→ Hyökkääjä oppii että `user.creditCard.number` on olemassa
+
+**Esimerkki 2 - Paljastaa regex-patterneja:**
+```json
+{
+  "message": "Invalid format. Expected /^[A-Z]{2}\\d{4}$/",
+  "expected": "^[A-Z]{2}\\d{4}$"
+}
+```
+→ Hyökkääjä saa tarkan säännön ja voi kokeilla brute forcea
+
+**Tässä projektissa:**
+```typescript
+roomIdSchema = z.enum(['A', 'B', 'C'])
+```
+
+**Jos palautat issues:**
+```json
+{
+  "message": "Invalid enum value. Expected 'A' | 'B' | 'C', received 'Z'"
+}
+```
+→ Paljastaa että vain A, B, C ovat sallittuja (mutta tämä ei ole ongelma, koska se on tarkoituksella julkista tietoa)
+
+**Milloin ongelma:** Jos skeemassa on sisäisiä ID:itä, salaisia polkuja, tai admin-kenttiä
+
+---
+
+### **2. Liian tekninen viesti loppukäyttäjälle**
+
+**Zod-virhe:**
+```json
+{
+  "code": "invalid_type",
+  "expected": "string",
+  "received": "undefined",
+  "path": ["start"],
+  "message": "Required"
+}
+```
+
+**Loppukäyttäjä ei ymmärrä:**
+- "invalid_type"? Mitä se tarkoittaa?
+- "expected string, received undefined"? Teknistä jargonia
+
+**Parempi käyttäjälle:**
+```json
+{
+  "message": "Aloitusaika puuttuu"
+}
+```
+
+**Milloin ongelma:** Consumer-facing API (ei developer API)
+
+---
+
+### **3. Ylimääräinen payload-koko**
+
+**Geneerinen:**
+```json
+{ "message": "Invalid request body" }  // ~40 bytes
+```
+
+**Issues kanssa:**
+```json
+{
+  "message": "Invalid request body",
+  "details": [
+    {
+      "code": "invalid_string",
+      "validation": "datetime",
+      "path": ["start"],
+      "message": "Invalid datetime",
+      "fatal": false,
+      "unionErrors": []
+    }
+  ]
+}  // ~200+ bytes
+```
+
+**Milloin ongelma:** Matalan kaistan yhteydet, mobiilisovellukset
+
+---
+
+### **4. API-versiointi ja ylläpito**
+
+**Ongelma:** Jos palautat tarkat Zod-virheet, ne muuttuvat kun päivität Zod-versiota
+
+**Zod 3.x:**
+```json
+{ "message": "Invalid datetime" }
+```
+
+**Zod 4.x (hypoteettinen):**
+```json
+{ "message": "Invalid ISO 8601 datetime string" }
+```
+
+→ Frontend joka parsii viestiä rikkoutuu
+
+**Milloin ongelma:** Julkinen API jolla on takautuva yhteensopivuus
+
+---
+
+### **5. Rate limiting & DoS-hyökkäykset**
+
+**Skenaario:** Hyökkääjä lähettää 1000 virheellistä pyyntöä/s
+
+**Ilman issues:** Palvelin palauttaa nopean geneerisen viestin  
+**Issues kanssa:** Palvelin prosessoi koko Zod-error-objektin, formatoi sen, serializoi JSON:ksi
+
+**Riski:** Lisää CPU-kuormaa, helpottaa DoS-hyökkäystä
+
+---
+
+## Milloin palauttaa issues tässä projektissa?
+
+### **Nykyinen konteksti:**
+
+**API-tyyppi:** Developer-facing (kokoushuoneiden varausjärjestelmä)  
+**Validointi:** Yksinkertainen (2 kenttää: start, end)  
+**Käyttäjät:** Todennäköisesti muut kehittäjät tai sisäiset järjestelmät  
+**Tietoturva:** Ei herkkiä tietoja skeemoissa
+
+---
+
+## Suositus tälle projektille
+
+### **✅ KYLLÄ - Palauta issues seuraavissa tapauksissa:**
+
+#### **1. POST /rooms/:roomId/bookings - Body validation** `@d:/StudioProjects/samuli_virkkula_kokoushuone_api/src/routes.ts:54-60`
+
+**Miksi KYLLÄ:**
+- Yksinkertainen validointi (start, end)
+- Kehittäjäystävällinen - auttaa integroinnissa
+- Ei paljasta herkkiä tietoja
+- Parantaa DX (Developer Experience)
+
+**Muoto:**
+```json
+{
+  "statusCode": 400,
+  "error": "Bad Request",
+  "message": "Invalid request body",
+  "details": [
+    {
+      "field": "start",
+      "message": "Invalid datetime"
+    }
+  ]
+}
+```
+
+---
+
+#### **2. Kehitysympäristössä (NODE_ENV=development)**
+
+**Miksi KYLLÄ:**
+- Kehittäjät tarvitsevat tarkkoja virheitä
+- Tietoturva ei ole yhtä kriittinen kehityksessä
+- Nopeuttaa debuggausta
+
+**Toteutus:**
+```typescript
+if (!bodyResult.success) {
+  const response: any = {
+    statusCode: 400,
+    error: 'Bad Request',
+    message: 'Invalid request body',
+  };
+  
+  if (process.env.NODE_ENV === 'development') {
+    response.details = bodyResult.error.issues.map(issue => ({
+      field: issue.path.join('.'),
+      message: issue.message,
+    }));
+  }
+  
+  return reply.status(400).send(response);
+}
+```
+
+---
+
+### **❌ EI - Älä palauta issues seuraavissa tapauksissa:**
+
+#### **1. URL-parametrien validointi (roomId, bookingId)** `@d:/StudioProjects/samuli_virkkula_kokoushuone_api/src/routes.ts:17-24`
+
+**Miksi EI:**
+- **Semanttinen syy:** Virheellinen roomId ei ole "Invalid request body" vaan "Room not found"
+- HTTP 404 on oikea statuskoodi - tarkoittaa että resurssia ei löydy
+- Issues-lista ei anna lisäarvoa: "Invalid enum value. Expected 'A' | 'B' | 'C'" → ei auta käyttäjää enempää kuin "Room not found"
+
+**Nykyinen toteutus on oikea:**
+```typescript
+return reply.status(404).send({
+  statusCode: 404,
+  error: 'Not Found',
+  message: 'Room not found', // Selkeä ja riittävä
+});
+```
+
+---
+
+#### **2. Tuotannossa herkkien tietojen kanssa**
+
+**Milloin EI:**
+- API käsittelee henkilötietoja
+- Skeemassa on admin-kenttiä tai sisäisiä ID:itä
+- Julkinen API jolla on versiontivaatimukset
+
+---
+
+## Yhteenveto ja lopullinen suositus
+
+### **Tälle projektille (kokoushuoneiden varaus-API):**
+
+| Endpoint | Palauta issues? | Perustelu |
+|----------|-----------------|-----------|
+| **POST body (start, end)** | ✅ **KYLLÄ** | Yksinkertainen, kehittäjäystävällinen, ei tietoturvariskiä |
+| **URL params (roomId, bookingId)** | ❌ **EI** | Semanttisesti virheellistä, 404 on oikea vastaus |
+| **Kehitysympäristö** | ✅ **KYLLÄ** | Aina hyödyllistä kehityksessä |
+| **Tuotanto** | ⚠️ **HARKITEN** | Riippuu asiakkaista ja tietoturvavaatimuksista |
+
+---
+
+### **Optimaalinen toteutus tälle projektille:**
+
+```typescript
+const bodyResult = createBookingSchema.safeParse(request.body);
+if (!bodyResult.success) {
+  return reply.status(400).send({
+    statusCode: 400,
+    error: 'Bad Request',
+    message: 'Invalid request body',
+    details: bodyResult.error.issues.map(issue => ({
+      field: issue.path.join('.'),
+      message: issue.message,
+    })),
+  } as ErrorResponse);
+}
+```
+
+**Miksi tämä on paras ratkaisu:**
+1. ✅ Auttaa frontend-kehittäjiä
+2. ✅ Ei paljasta herkkiä tietoja (start ja end ovat yksinkertaisia kenttiä)
+3. ✅ Skaalautuu jos lisää kenttiä tulevaisuudessa
+4. ✅ RESTful API best practice developer-facing API:lle
+5. ✅ Lyhyt ja ytimekäs payload
+
+**Poikkeus:** Jos API on tarkoitettu **loppukäyttäjille** (ei kehittäjille), jätä issues pois ja käytä ihmisystävällisiä viestejä.

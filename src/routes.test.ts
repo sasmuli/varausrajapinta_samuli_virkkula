@@ -114,6 +114,36 @@ describe('API Routes', () => {
       await app.close();
     });
 
+    it('should return 400 with details for invalid request body', async () => {
+      const app = await buildServer();
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/rooms/A/bookings',
+        payload: {
+          start: 'invalid-date',
+          end: '2026-01-28T10:00:00Z',
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+      const body = JSON.parse(response.body);
+      expect(body).toMatchObject({
+        statusCode: 400,
+        error: 'Bad Request',
+        message: 'Invalid request body',
+      });
+      expect(body.details).toBeDefined();
+      expect(Array.isArray(body.details)).toBe(true);
+      expect(body.details.length).toBeGreaterThan(0);
+      
+      const startError = body.details.find((d: any) => d.field === 'start');
+      expect(startError).toBeDefined();
+      expect(startError.message).toBeDefined();
+
+      await app.close();
+    });
+
     it('should return 400 for booking in the past', async () => {
       const app = await buildServer();
       const start = new Date(Date.now() - 1000 * 60 * 60);

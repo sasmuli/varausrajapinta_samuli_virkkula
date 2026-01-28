@@ -57,6 +57,10 @@ export async function registerRoutes(app: FastifyInstance) {
             statusCode: 400,
             error: 'Bad Request',
             message: 'Invalid request body',
+            details: bodyResult.error.issues.map(issue => ({
+              field: issue.path.join('.'),
+              message: issue.message,
+            })),
           } as ErrorResponse);
         }
 
