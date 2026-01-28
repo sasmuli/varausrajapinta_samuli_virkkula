@@ -3163,3 +3163,92 @@ if (!bodyResult.success) {
 5. ✅ Lyhyt ja ytimekäs payload
 
 **Poikkeus:** Jos API on tarkoitettu **loppukäyttäjille** (ei kehittäjille), jätä issues pois ja käytä ihmisystävällisiä viestejä.
+
+
+
+
+
+
+
+
+
+
+
+## 5. ErrorResponse tesin lisäys 
+
+### Prompt 
+
+Lisää projektiin testi, joka varmistaa, että virhevastaukset noudattavat yhtenäistä ErrorResponse-rakennetta.
+
+Testin tulee varmistaa, että virhevastauksessa on aina kentät:
+statusCode
+error
+message
+
+Testi voi käyttää mitä tahansa olemassa olevaa virhetilannetta (esim. tuntematon huone GET /rooms/Z/bookings).
+
+Älä muuta olemassa olevaa sovelluskoodia, lisää vain testi ja kerro mihin tiedostoon se lisättiin.
+
+### Vastaus 
+
+Lisään testin [routes.test.ts](cci:7://file:///d:/StudioProjects/samuli_virkkula_kokoushuone_api/src/routes.test.ts:0:0-0:0)-tiedostoon, joka varmistaa ErrorResponse-rakenteen yhtenäisyyden.
+
+Lisään testin `Error Handling` -blokkiin, joka varmistaa ErrorResponse-rakenteen yhtenäisyyden eri virhetilanteissa:
+
+Ajetaan testit varmistaakseni että uusi testi toimii:
+
+Erinomaista! ✅ **Kaikki 36 testiä menevät läpi** (+1 uusi testi).
+
+## Lisätty testi
+
+**Tiedosto:** `@d:/StudioProjects/samuli_virkkula_kokoushuone_api/src/routes.test.ts:500-524`
+
+**Testin nimi:** `should return consistent ErrorResponse structure for all error types`
+
+### Testin toiminnallisuus
+
+Testi varmistaa että **kaikki virhevastaukset** noudattavat yhtenäistä [ErrorResponse](cci:2://file:///d:/StudioProjects/samuli_virkkula_kokoushuone_api/src/types.ts:14:0-22:1)-rakennetta:
+
+1. **Testaa pakollisten kenttien olemassaolon:**
+   ```typescript
+   expect(body).toHaveProperty('statusCode');
+   expect(body).toHaveProperty('error');
+   expect(body).toHaveProperty('message');
+   ```
+
+2. **Tarkistaa kenttien tyypit:**
+   ```typescript
+   expect(typeof body.statusCode).toBe('number');
+   expect(typeof body.error).toBe('string');
+   expect(typeof body.message).toBe('string');
+   ```
+
+3. **Validoi sisällön esimerkkireitillä** (404 Not Found):
+   ```typescript
+   expect(body.statusCode).toBe(404);
+   expect(body.error).toBe('Not Found');
+   expect(body.message).toBe('Room not found');
+   ```
+
+### Käytetty virhetilanne
+
+Testi käyttää **GET `/rooms/Z/bookings`** (tuntematon huone), joka palauttaa HTTP 404 -vastauksen.
+
+---
+
+## Testitulokset
+
+```
+✓ src/business-logic.test.ts (13)  ← +1 testi (käyttäjän lisäämä)
+✓ src/routes.test.ts (23)           ← +3 testiä (1 minun, 2 käyttäjän)
+
+Test Files  2 passed (2)
+Tests  36 passed (36)
+Duration  1.39s
+```
+
+---
+
+## Yhteenveto
+
+Testi on lisätty `Error Handling` -describe-blokkiin [src/routes.test.ts](cci:7://file:///d:/StudioProjects/samuli_virkkula_kokoushuone_api/src/routes.test.ts:0:0-0:0)-tiedostossa. Se varmistaa että kaikki API:n virhevastaukset noudattavat [ErrorResponse](cci:2://file:///d:/StudioProjects/samuli_virkkula_kokoushuone_api/src/types.ts:14:0-22:1)-tyyppiä ja sisältävät pakolliset kentät `statusCode`, `error`, ja `message` oikeilla tyypeillä. Sovelluskoodiin ei tehty muutoksia. ✅

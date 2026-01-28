@@ -496,5 +496,31 @@ describe('API Routes', () => {
       bookingStore.getBookingsByRoom = originalMethod;
       await app.close();
     });
+
+    it('should return consistent ErrorResponse structure for all error types', async () => {
+      const app = await buildServer();
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/rooms/Z/bookings',
+      });
+
+      expect(response.statusCode).toBe(404);
+      const body = JSON.parse(response.body);
+
+      expect(body).toHaveProperty('statusCode');
+      expect(body).toHaveProperty('error');
+      expect(body).toHaveProperty('message');
+
+      expect(typeof body.statusCode).toBe('number');
+      expect(typeof body.error).toBe('string');
+      expect(typeof body.message).toBe('string');
+
+      expect(body.statusCode).toBe(404);
+      expect(body.error).toBe('Not Found');
+      expect(body.message).toBe('Room not found');
+
+      await app.close();
+    });
   });
 });
