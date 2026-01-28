@@ -228,6 +228,50 @@ describe('API Routes', () => {
 
       await app.close();
     });
+
+    it('should return 400 when start equals end', async () => {
+      const app = await buildServer();
+      const start = new Date(Date.now() + 1000 * 60 * 60);
+      const end = new Date(start.getTime());
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/rooms/A/bookings',
+        payload: { start: start.toISOString(), end: end.toISOString() },
+      });
+
+      expect(response.statusCode).toBe(400);
+      const body = JSON.parse(response.body);
+      expect(body).toMatchObject({
+        statusCode: 400,
+        error: 'Bad Request',
+        message: 'Start time must be before end time',
+      });
+
+      await app.close();
+    });
+
+    it('should return 400 when start is after end', async () => {
+      const app = await buildServer();
+      const end = new Date(Date.now() + 1000 * 60 * 60);
+      const start = new Date(Date.now() + 1000 * 60 * 60 * 2); 
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/rooms/A/bookings',
+        payload: { start: start.toISOString(), end: end.toISOString() },
+      });
+
+      expect(response.statusCode).toBe(400);
+      const body = JSON.parse(response.body);
+      expect(body).toMatchObject({
+        statusCode: 400,
+        error: 'Bad Request',
+        message: 'Start time must be before end time',
+      });
+
+      await app.close();
+    });
   });
 
   describe('GET /rooms/:roomId/bookings', () => {
