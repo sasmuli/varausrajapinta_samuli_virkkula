@@ -2541,3 +2541,171 @@ Data Layer (store.ts)
 ```
 
 Arkkitehtuuri on **johdonmukainen ja oikein toteutettu**. Aikaisempi epäjohdonmukaisuus on korjattu.
+
+
+
+
+
+
+
+
+
+
+
+## 3. Globaali errorhandeler
+
+### Prompt 
+
+Lisää globaali error handler käyttäen setErrorHandler-metodia.
+
+Kaikki tuntemattomat virheet (eli virheet, jotka eivät ole BookingError-tyyppiä)
+  palauttavat aina saman muotoisen ErrorResponse-olion.
+HTTP-statuskoodin tulee olla 500.
+Vastausmuodon tulee olla:
+  {
+    statusCode: 500,
+    error: "Internal Server Error",
+    message: "An unexpected error occurred"
+  }
+
+
+Muun sovelluksen toiminnallisuutta ei tule muuttaa, vain virheenkäsittelyyn liittyvät muutokset ovat sallittuja. Ota uusi globaali error handler käyttöön Fastify-instanssissa.
+
+Kerro lisäksi, vaikuttaako muutos olemassa oleviin testeihin tai muuhun toiminnallisuuteen, ja edellyttääkö se uusien testien lisäämistä.
+
+### Vastaus 
+
+Lisään globaalin error handlerin [server.ts](cci:7://file:///d:/StudioProjects/samuli_virkkula_kokoushuone_api/src/server.ts:0:0-0:0):ään.
+
+
+
+Ajetaan testit varmistaakseni että muutos ei riko olemassa olevaa toiminnallisuutta:
+
+Erinomaista! ✅ **Kaikki 29 testiä menevät läpi** globaalin error handlerin lisäämisen jälkeen.
+
+## Toteutetut muutokset
+
+### **[server.ts](cci:7://file:///d:/StudioProjects/samuli_virkkula_kokoushuone_api/src/server.ts:0:0-0:0) - Globaali error handler** `@d:/StudioProjects/samuli_virkkula_kokoushuone_api/src/server.ts:10-18`
+
+```typescript
+app.setErrorHandler((error, request, reply) => {
+  app.log.error(error);
+  
+  reply.status(500).send({
+    statusCode: 500,
+    error: 'Internal Server Error',
+    message: 'An unexpected error occurred',
+  } as ErrorResponse);
+});
+```
+
+---
+
+## Vaikutukset olemassa oleviin testeihin
+
+### ✅ **Ei vaikutusta nykyisiin testeihin**
+
+**Syy:** Kaikki olemassa olevat testit testaavat:
+- **BookingError**-virheitä (400, 404, 409) - Nämä käsitellään [routes.ts](cci:7://file:///d:/StudioProjects/samuli_virkkula_kokoushuone_api/src/routes.ts:0:0-0:0):n try-catch-blokeissa **ennen** kuin ne pääsisivät globaalille handlerille
+- **Zod-validointivirheitä** - Nämä käsitellään `safeParse()`:lla ja preHandler-hookeissa
+- **Onnistuneita pyyntöjä** - Ei virheitä
+
+**Testiloki vahvistaa:**
+```
+✓ src/business-logic.test.ts (12)
+✓ src/routes.test.ts (17)  ← +0 epäonnistuneita
+Test Files  2 passed (2)
+Tests  29 passed (29)
+```
+
+---
+
+## Milloin globaali handler aktivoituu?
+
+Handler käsittelee vain **tuntemattomat virheet**, esim:
+- `TypeError` (null reference, undefined property)
+- `SyntaxError` (JSON parsing virhe Fastify:n ulkopuolella)
+- Odottamattomat virheet business-logiikassa
+- Kolmannen osapuolen kirjastojen virheet
+
+**Esimerkki:** Jos [routes.ts](cci:7://file:///d:/StudioProjects/samuli_virkkula_kokoushuone_api/src/routes.ts:0:0-0:0):ssä olisi `throw error;` (rivi 83) ja virhe ei ole [BookingError](cci:2://file:///d:/StudioProjects/samuli_virkkula_kokoushuone_api/src/business-logic.ts:3:0-11:1), nyt se käsitellään globaalisti.
+
+---
+
+## Uudet testit - Suositukset
+
+### **1. Kriittinen: Testaa tuntematon virhe** 🔴
+
+Lisää testi joka varmistaa että globaali handler toimii:
+
+```typescript
+// src/routes.test.ts
+it('should return 500 for unexpected errors', async () => {
+  const app = await buildServer();
+  
+  // Mock store.getBookingsByRoom heittämään odottamattoman virheen
+  const originalMethod = bookingStore.getBookingsByRoom;
+  bookingStore.getBookingsByRoom = () => {
+    throw new Error('Unexpected database error');
+  };
+  
+  const response = await app.inject({
+    method: 'GET',
+    url: '/rooms/A/bookings',
+  });
+  
+  expect(response.statusCode).toBe(500);
+  const body = JSON.parse(response.body);
+  expect(body).toMatchObject({
+    statusCode: 500,
+    error: 'Internal Server Error',
+    message: 'An unexpected error occurred',
+  });
+  
+  // Palauta alkuperäinen metodi
+  bookingStore.getBookingsByRoom = originalMethod;
+  await app.close();
+});
+```
+
+### **2. Tärkeä: Testaa että logger kutsutaan** 🟠
+
+Varmista että virheet logitetaan:
+
+```typescript
+it('should log unexpected errors', async () => {
+  const app = await buildServer();
+  const logSpy = vi.spyOn(app.log, 'error');
+  
+  // Aiheuta virhe...
+  
+  expect(logSpy).toHaveBeenCalledWith(expect.any(Error));
+  
+  logSpy.mockRestore();
+  await app.close();
+});
+```
+
+---
+
+## Yhteenveto
+
+| Kysymys | Vastaus |
+|---------|---------|
+| **Vaikuttaako olemassa oleviin testeihin?** | ❌ Ei - Kaikki 29 testiä menevät läpi |
+| **Muuttaako olemassa olevaa toiminnallisuutta?** | ❌ Ei - BookingError ja validointivirheet käsitellään edelleen samoin |
+| **Tarvitseeko uusia testejä?** | ✅ Kyllä - Suosittelen lisäämään testin tuntemattomille virheille |
+| **Parantaako tuotantoturvallisuutta?** | ✅ Kyllä - Estää stack trace -vuodot ja tarjoaa yhtenäisen virhevastauksen |
+
+Globaali error handler on nyt käytössä ja toimii turvana odottamattomille virheille. Suosittelen lisäämään testin joka varmistaa sen toiminnan. 🎉
+
+
+
+
+
+
+
+
+
+
+

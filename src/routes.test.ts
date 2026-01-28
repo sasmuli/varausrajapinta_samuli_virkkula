@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { buildServer } from './server.js';
 import { bookingStore } from './store.js';
 
@@ -372,6 +372,54 @@ describe('API Routes', () => {
 
       expect(response.statusCode).toBe(404);
 
+      await app.close();
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('should return 500 for unexpected errors', async () => {
+      const app = await buildServer();
+
+      const originalMethod = bookingStore.getBookingsByRoom;
+      bookingStore.getBookingsByRoom = () => {
+        throw new Error('Unexpected database error');
+      };
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/rooms/A/bookings',
+      });
+
+      expect(response.statusCode).toBe(500);
+      const body = JSON.parse(response.body);
+      expect(body).toMatchObject({
+        statusCode: 500,
+        error: 'Internal Server Error',
+        message: 'An unexpected error occurred',
+      });
+
+      bookingStore.getBookingsByRoom = originalMethod;
+      await app.close();
+    });
+
+    it('should log unexpected errors', async () => {
+      const app = await buildServer();
+      const logSpy = vi.spyOn(app.log, 'error');
+
+      const originalMethod = bookingStore.getBookingsByRoom;
+      bookingStore.getBookingsByRoom = () => {
+        throw new Error('Unexpected database error');
+      };
+
+      await app.inject({
+        method: 'GET',
+        url: '/rooms/A/bookings',
+      });
+
+      expect(logSpy).toHaveBeenCalledWith(expect.any(Error));
+
+      logSpy.mockRestore();
+      bookingStore.getBookingsByRoom = originalMethod;
       await app.close();
     });
   });
