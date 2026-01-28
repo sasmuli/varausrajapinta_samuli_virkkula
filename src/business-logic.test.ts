@@ -31,6 +31,15 @@ describe('Business Logic', () => {
       ).toThrow('Start time must be before end time');
     });
 
+    it('should reject booking when start is after end', () => {
+      const start = new Date(Date.now() + 1000 * 60 * 60 * 2); // +2h
+      const end = new Date(Date.now() + 1000 * 60 * 60);       // +1h
+
+      expect(() =>
+        validateBookingTimes(start.toISOString(), end.toISOString())
+      ).toThrow('Start time must be before end time');
+    });
+
     it('should accept valid future booking', () => {
       const start = new Date(Date.now() + 1000 * 60 * 60);
       const end = new Date(start.getTime() + 1000 * 60 * 60);
