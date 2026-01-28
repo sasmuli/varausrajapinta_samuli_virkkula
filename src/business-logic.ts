@@ -55,3 +55,16 @@ export function createBooking(
   checkOverlap(roomId, start, end);
   return bookingStore.createBooking(roomId, start, end);
 }
+
+export function getBookingsByRoom(roomId: RoomId): Booking[] {
+  return bookingStore.getBookingsByRoom(roomId);
+}
+
+export function deleteBookingById(bookingId: string): void {
+  const deleted = bookingStore.deleteBooking(bookingId);
+
+  if (!deleted) {
+    throw new BookingError('Booking not found', 404);
+  }
+}
+

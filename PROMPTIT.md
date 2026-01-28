@@ -2452,3 +2452,92 @@ export async function registerRoutes(app: FastifyInstance) {
 ```
 
 Tämä poistaa **~15 riviä toistoa** ja tekee koodista ylläpidettävämmän.
+
+
+
+
+
+
+
+
+
+
+
+## 2. routes.ts tarkistus
+
+### Prompt
+
+Tarkista että @routes.ts ei kutsu @store.ts metodeja suoraan GET- JA DELETE- reiteissä vaan käyttää @business-logic.ts funktioita
+
+Jos suoria store-kutsun löytyy @routes.ts , näytä missä kohtaa ja ehdota korjaus
+
+### Vastaus
+
+Tarkistan [routes.ts](cci:7://file:///d:/StudioProjects/samuli_virkkula_kokoushuone_api/src/routes.ts:0:0-0:0):n GET ja DELETE reitit sekä varmistan että [business-logic.ts](cci:7://file:///d:/StudioProjects/samuli_virkkula_kokoushuone_api/src/business-logic.ts:0:0-0:0):ssä on tarvittavat funktiot.
+
+✅ **Arkkitehtuuri on jo oikein toteutettu!**
+
+## Tarkistustulos
+
+Analysoin molemmat tiedostot ja vahvistan:
+
+### **[routes.ts](cci:7://file:///d:/StudioProjects/samuli_virkkula_kokoushuone_api/src/routes.ts:0:0-0:0) - Import (rivi 7):**
+```typescript
+import { createBooking, BookingError, getBookingsByRoom, deleteBookingById } from './business-logic.js';
+```
+✅ **Ei** importtia [store.ts](cci:7://file:///d:/StudioProjects/samuli_virkkula_kokoushuone_api/src/store.ts:0:0-0:0):stä
+
+### **GET-reitti** `@d:/StudioProjects/samuli_virkkula_kokoushuone_api/src/routes.ts:88-97`:
+```typescript
+app.get('/rooms/:roomId/bookings', ..., async (request, reply) => {
+  const bookings = getBookingsByRoom(request.params.roomId);  // ✅ business-logic
+  return reply.status(200).send(bookings);
+});
+```
+
+### **DELETE-reitti** `@d:/StudioProjects/samuli_virkkula_kokoushuone_api/src/routes.ts:99-124`:
+```typescript
+app.delete('/bookings/:bookingId', ..., async (request, reply) => {
+  try {
+    deleteBookingById(request.params.bookingId);  // ✅ business-logic
+    return reply.status(204).send();
+  } catch (error) { ... }
+});
+```
+
+### **Business-logiikka tarjoaa molemmat funktiot:**
+
+`@d:/StudioProjects/samuli_virkkula_kokoushuone_api/src/business-logic.ts:59-61`:
+```typescript
+export function getBookingsByRoom(roomId: RoomId): Booking[] {
+  return bookingStore.getBookingsByRoom(roomId);
+}
+```
+
+`@d:/StudioProjects/samuli_virkkula_kokoushuone_api/src/business-logic.ts:63-69`:
+```typescript
+export function deleteBookingById(bookingId: string): void {
+  const deleted = bookingStore.deleteBooking(bookingId);
+  if (!deleted) {
+    throw new BookingError('Booking not found', 404);
+  }
+}
+```
+
+---
+
+## Yhteenveto
+
+**Ei suoria store-kutsuja löydetty!** 🎉
+
+Kaikki kolme endpointtiä noudattavat oikeaa kerrosjakoa:
+
+```
+HTTP Layer (routes.ts)
+    ↓
+Domain Layer (business-logic.ts)
+    ↓
+Data Layer (store.ts)
+```
+
+Arkkitehtuuri on **johdonmukainen ja oikein toteutettu**. Aikaisempi epäjohdonmukaisuus on korjattu.

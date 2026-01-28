@@ -340,6 +340,28 @@ describe('API Routes', () => {
       await app.close();
     });
 
+    it('should return ErrorResponse shape for non-existent booking (404)', async () => {
+      const app = await buildServer();
+
+      const response = await app.inject({
+        method: 'DELETE',
+        url: '/bookings/550e8400-e29b-41d4-a716-446655440000',
+      });
+
+      expect(response.statusCode).toBe(404);
+
+      const body = JSON.parse(response.body);
+
+      expect(body).toMatchObject({
+        statusCode: 404,
+        error: 'Not Found',
+        message: 'Booking not found',
+      });
+
+      await app.close();
+    });
+
+
     it('should return 404 for invalid booking ID format', async () => {
       const app = await buildServer();
 

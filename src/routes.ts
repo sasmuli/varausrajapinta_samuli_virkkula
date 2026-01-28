@@ -4,8 +4,7 @@ import {
   roomIdSchema,
   bookingIdSchema,
 } from './validation.js';
-import { createBooking, BookingError } from './business-logic.js';
-import { bookingStore } from './store.js';
+import { createBooking, BookingError, getBookingsByRoom, deleteBookingById } from './business-logic.js';
 import { ErrorResponse, RoomId} from './types.js';
 
 type RoomParams = { roomId: RoomId };
@@ -72,7 +71,12 @@ export async function registerRoutes(app: FastifyInstance) {
       if (error instanceof BookingError) {
         return reply.status(error.statusCode).send({
           statusCode: error.statusCode,
-          error: error.statusCode === 409 ? 'Conflict' : 'Bad Request',
+          error:
+            error.statusCode === 409
+              ? 'Conflict'
+              : error.statusCode === 404
+                ? 'Not Found'
+                : 'Bad Request',
           message: error.message,
         } as ErrorResponse);
       }
@@ -87,8 +91,7 @@ export async function registerRoutes(app: FastifyInstance) {
     '/rooms/:roomId/bookings',
     { preHandler: validateRoomId },
     async (request, reply) => {
-      const bookings = bookingStore.getBookingsByRoom(request.params.roomId);
-
+      const bookings = getBookingsByRoom(request.params.roomId);
       return reply.status(200).send(bookings);
     }
   );
@@ -99,17 +102,24 @@ export async function registerRoutes(app: FastifyInstance) {
     '/bookings/:bookingId',
     { preHandler: validateBookingId },
     async (request, reply) => {
-      const booking = bookingStore.getBookingById(request.params.bookingId);
-      if (!booking) {
-        return reply.status(404).send({
-          statusCode: 404,
-          error: 'Not Found',
-          message: 'Booking not found',
-        } as ErrorResponse);
+      try {
+        deleteBookingById(request.params.bookingId);
+        return reply.status(204).send();
+      } catch (error) {
+        if (error instanceof BookingError) {
+          return reply.status(error.statusCode).send({
+            statusCode: error.statusCode,
+            error:
+              error.statusCode === 409
+                ? 'Conflict'
+                : error.statusCode === 404
+                  ? 'Not Found'
+                  : 'Bad Request',
+            message: error.message,
+          } as ErrorResponse);
+        }
+        throw error;
       }
-
-      bookingStore.deleteBooking(request.params.bookingId);
-      return reply.status(204).send();
     }
   );
 }
